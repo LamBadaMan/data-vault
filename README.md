@@ -8,9 +8,9 @@ Currently, the projects supports Futures only — with full support for historic
 ## Features
 - Easy-to-use interface for interacting with Bloomberg data
 - Fetch historical futures chains
-- Retrieve comprehensive metadata including trading hours, delivery dates, and contract specifications.
-- Download full OHLCV history (Open, High, Low, Close, Volume, Open Interest) with automatic date chunking.
-- Built on Polars for fast, efficient dataframe handling.
+- Retrieve comprehensive metadata including trading hours, delivery dates, and contract specifications
+- Download full OHLCV history (Open, High, Low, Close, Volume, Open Interest) with automatic date chunking
+- Built on Polars for fast, efficient dataframe handling
 
 
 ```python
