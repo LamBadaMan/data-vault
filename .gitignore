@@ -80,3 +80,11 @@ build/
 # Environment variable #
 ########################
 .env
+
+# data #
+########################
+data/
+
+# test nb #
+########################
+test.ipynb
