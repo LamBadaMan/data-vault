@@ -1,10 +1,9 @@
 # Data-Vault
 
 ## Description
-`data-vault` is a Python package designed to simplify fetching and managing financial market data from Bloomberg via the `bbmirror` and `bbmirror client`.
-It provides a high-level, object-oriented interface to retrieve chains, metadata, and historical OHLCV data for financial instruments.
+`data-vault` is a Python project that provides a collection of classes and functions to simplify fetching and managing financial market data from Bloomberg via `bbmirror client`. It provides a high-level, object-oriented interface to retrieve chains, metadata, and historical OHLCV data for financial instruments.
 
-Currently, the package supports Futures only — with full support for historical contract chains, metadata, and price history — but it is built with extensibility in mind to support other asset classes (Equities, FX, Bonds) in the near future.
+Currently, the projects supports Futures only — with full support for historical contract chains, metadata, and price history — but it is built with extensibility in mind to support other asset classes (Equities, FX, Bonds) in the near future.
 
 ## Features
 - Easy-to-use interface for interacting with Bloomberg data
