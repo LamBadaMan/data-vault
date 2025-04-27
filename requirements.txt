@@ -1,0 +1,5 @@
+polars
+pandas 
+pyarrow
+tqdm
+git+https://github.com/LamBadaMan/bbmirror-client.git
