@@ -2,4 +2,4 @@ polars
 pandas 
 pyarrow
 tqdm
-git+https://github.com/LamBadaMan/bbmirror-client.git
+git+https://github.com/LamBadaMan/fastdata-client.git

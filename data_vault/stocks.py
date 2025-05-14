@@ -16,13 +16,15 @@ def is_valid_yyyymmdd(date: str) -> bool:
         return False
 
 
-class FUTURES:
-    def __init__(self, active_contract: str):
-        self.active_contract = active_contract
-        self._chains: Optional[pl.DataFrame] = None
+class STOCKS:
+    def __init__(self, index: str):
+        self.index = index
+        self._members: Optional[pl.DataFrame] = None
         self._symbols: Optional[list[str]] = None
         self._meta: Optional[pl.DataFrame] = None
+        self._divs: Optional[pl.DataFrame] = None
         self._ohlc: Optional[pl.DataFrame] = None
+        self._fundamentals: Optional[pl.DataFrame] = None
 
     def __get_or_raise(self, attr_name: str, fetch_method_name: str):
         value = getattr(self, attr_name)
@@ -31,30 +33,38 @@ class FUTURES:
         return value
 
     @property
-    def chains(self) -> pl.DataFrame:
-        return self.__get_or_raise("_chains", "fetch_chains")
+    def members(self) -> pl.DataFrame:
+        return self.__get_or_raise("_chains", "fetch_members")
 
     @property
     def symbols(self) -> list[str]:
-        return self.__get_or_raise("_symbols", "fetch_chains")
+        return self.__get_or_raise("_symbols", "fetch_symbols")
 
     @property
     def meta(self) -> pl.DataFrame:
         return self.__get_or_raise("_meta", "fetch_meta")
 
     @property
+    def divs(self) -> pl.DataFrame:
+        return self.__get_or_raise("_divs", "fetch_divs")
+
+    @property
     def ohlc(self) -> pl.DataFrame:
         return self.__get_or_raise("_ohlc", "fetch_ohlc")
+    
+    @property
+    def fundamentals(self) -> pl.DataFrame:
+        return self.__get_or_raise("_ohlc", "fetch_fundamentals")
 
-    def __fetch_chain(self, as_of: str) -> pl.DataFrame:
+    def __fetch_constituents(self, as_of: str) -> pl.DataFrame:
         if not is_valid_yyyymmdd(as_of):
             raise ValueError("Date must be in 'YYYYMMDD' format (e.g., '20250410')")
 
         payload = {
-            "tickers": [self.active_contract],
-            "fields": ["FUT_CHAIN"],
+            "tickers": [self.index],
+            "fields": ["INDX_MWEIGHT_HIST"],
             "options": {},
-            "overrides": [("CHAIN_DATE", as_of)],
+            "overrides": [("END_DATE_OVERRIDE", as_of)],
         }
 
         response = bds(payload)
@@ -62,7 +72,7 @@ class FUTURES:
             [pl.lit(as_of).str.strptime(pl.Date, "%Y%m%d").alias("as_of")]
         )
 
-    def fetch_chains(self, start_date: str, end_date: str, progressbar: bool = True) -> "FUTURES":
+    def fetch_members(self, start_date: str, end_date: str, progressbar: bool = True) -> "STOCKS":
         for date in [start_date, end_date]:
             if not is_valid_yyyymmdd(date):
                 raise ValueError("Date must be in 'YYYYMMDD' format (e.g., '20250410')")
@@ -81,37 +91,30 @@ class FUTURES:
             .to_list()
         )
 
-        iterator = tqdm(dates, desc="Fetching chains") if progressbar else dates
-        chains = [self.__fetch_chain(as_of=date) for date in iterator]
-        chains = pl.concat(chains, how="vertical", rechunk=True).sort(["as_of", "symbol"])[["as_of", "symbol"]]
+        iterator = tqdm(dates, desc="Fetching constituents") if progressbar else dates
+        members = [self.__fetch_constituents(as_of=date) for date in iterator]
+        members = pl.concat(members, how="vertical", rechunk=True).sort(["as_of", "symbol"])[["as_of", "symbol"]]
 
-        self._chains = chains
-        self._symbols = chains["symbol"].unique().to_list()
+        self._members = members
+        self._symbols = members["symbol"].unique().to_list()
         return self
 
-    def fetch_meta(self) -> "FUTURES":
-        if self._chains is None or self._symbols is None:
-            raise AttributeError("Historical future chains must be fetched. Please run `fetch_chains()` first.")
+    def fetch_meta(self) -> "STOCKS":
+        if self._members is None or self._symbols is None:
+            raise AttributeError("Historical index members must be fetched. Please run `fetch_members()` first.")
 
         fields = [
-            "ID_BB_GLOBAL_ULT_PARENT_CO_NAME",
-            "FUT_EXCH_NAME_LONG",
-            "DERIVATIVE_DELIVERY_TYPE",
-            "QUOTE_UNITS",
-            "QUOTED_CRNCY",
-            "FUT_TRADING_UNITS",
-            "FUT_FIRST_TRADE_DT",
-            "LAST_TRADEABLE_DT",
-            "FUT_NOTICE_FIRST",
-            "FUT_DLV_DT_FIRST",
-            "FUT_DLV_DT_LAST",
-            "FUT_CONTRACT_DT",
-            "FUT_CONT_SIZE",
-            "FUT_TRADING_HRS",
-            "FUT_INIT_SPEC_ML",
-            "FUT_SEC_SPEC_ML",
-            "FUT_INIT_HEDGE_ML",
-            "FUT_SEC_HEDGE_ML",
+            "LONG_COMP_NAME",
+            "GICS_SECTOR_NAME",
+            "GICS_INDUSTRY_NAME",
+            "GICS_INDUSTRY_GROUP_NAME",
+            "GICS_SUB_INDUSTRY_NAME",
+            "COUNTRY_ISO",
+            "PRIMARY_EXCHANGE_NAME",
+            "EXCH_CODE",
+            "ID_MIC_PRIM_EXCH",
+            "TRADING_DAY_START_TIME_EOD",
+            "TRADING_DAY_END_TIME_EOD",
         ]
 
         payload = {
@@ -129,35 +132,58 @@ class FUTURES:
         )
 
         cols2date = [
-            "fut_first_trade_dt",
-            "last_tradeable_dt",
-            "fut_notice_first",
-            "fut_dlv_dt_first",
-            "fut_dlv_dt_last",
+            "trading_day_start_time_eod",
+            "trading_day_end_time_eod",
         ]
 
         df = (
             df.with_columns(
                 [pl.col(col).str.strptime(pl.Date, format="%Y-%m-%dT%H:%M:%S%.3f") for col in cols2date]
             )
-            .with_columns(
-                pl.col("fut_trading_hrs").str.split("-").alias("split_range"),
-            )
-            .with_columns(
-                [
-                    pl.col("split_range").list.get(0).str.strptime(pl.Time, format="%H:%M").alias("trading_hrs_start"),
-                    pl.col("split_range").list.get(1).str.strptime(pl.Time, format="%H:%M").alias("trading_hrs_end"),
-                ]
-            )
-            .drop(["fut_trading_hrs", "split_range"])
-        ).sort(["fut_first_trade_dt", "symbol"])
+        ).sort(["symbol"])
 
         self._meta = df
         return self
+    
+    def fetch_divs(self) -> "STOCKS":
+        if self._members is None or self._symbols is None:
+            raise AttributeError("Historical index members must be fetched. Please run `fetch_members()` first.")
 
-    def fetch_ohlc(self, progressbar: bool = True) -> "FUTURES":
+        fields = [
+            "DVD_HIST_ALL",
+        ]
+
+        payload = {
+            "tickers": self._symbols,
+            "fields": fields,
+            "options": {},
+            "overrides": [],
+        }
+
+        response = bds(payload)
+        df = (
+            pl.DataFrame(response)
+            .rename({col: col.lower() for col in pl.DataFrame(response).columns})
+            .rename({"security": "symbol"})
+        )
+
+        cols2date = [
+            "dvd_hist_all",
+        ]
+
+        df = (
+            df.with_columns(
+                [pl.col(col).str.strptime(pl.Date, format="%Y-%m-%dT%H:%M:%S%.3f") for col in cols2date]
+            )
+        ).sort(["symbol"])
+
+        self._divs = df
+        return self
+
+
+    def fetch_ohlc(self, progressbar: bool = True) -> "STOCKS":
         if self._symbols is None:
-            raise AttributeError("Historical future chains must be fetched. Please run `fetch_chains()` first.")
+            raise AttributeError("Historical index members must be fetched. Please run `fetch_members()` first.")
 
         start = datetime.strptime("19900101", "%Y%m%d")
         today = datetime.today()
@@ -192,7 +218,7 @@ class FUTURES:
                     "PX_LOW",
                     "PX_LAST",
                     "PX_VOLUME",
-                    "OPEN_INT",
+                    "CUR_MKT_CAP"
                 ],
                 "start_date": chunk_start.strftime("%Y%m%d"),
                 "end_date": chunk_end.strftime("%Y%m%d"),
@@ -210,7 +236,7 @@ class FUTURES:
                 "PX_LOW": pl.Float64,
                 "PX_LAST": pl.Float64,
                 "PX_VOLUME": pl.Float64,
-                "OPEN_INT": pl.Float64,
+                "CUR_MKT_CAP": pl.Float64,
             }
 
             df = pl.DataFrame(response, schema=schema)
