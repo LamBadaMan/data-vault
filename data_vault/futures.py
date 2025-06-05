@@ -4,18 +4,6 @@ from datetime import datetime, timedelta
 from tqdm.auto import tqdm
 from typing import Optional
 
-
-def is_valid_yyyymmdd(date: str) -> bool:
-    """
-    Checks whether a date string is in the 'YYYYMMDD' format.
-    """
-    try:
-        datetime.strptime(date, "%Y%m%d")
-        return True
-    except ValueError:
-        return False
-
-
 class FUTURES:
     def __init__(self, active_contract: str):
         self.active_contract = active_contract
@@ -47,8 +35,6 @@ class FUTURES:
         return self.__get_or_raise("_ohlc", "fetch_ohlc")
 
     def __fetch_chain(self, as_of: str) -> pl.DataFrame:
-        if not is_valid_yyyymmdd(as_of):
-            raise ValueError("Date must be in 'YYYYMMDD' format (e.g., '20250410')")
 
         payload = {
             "tickers": [self.active_contract],
@@ -62,13 +48,10 @@ class FUTURES:
             [pl.lit(as_of).str.strptime(pl.Date, "%Y%m%d").alias("as_of")]
         )
 
-    def fetch_chains(self, start_date: str, end_date: str, progressbar: bool = True) -> "FUTURES":
-        for date in [start_date, end_date]:
-            if not is_valid_yyyymmdd(date):
-                raise ValueError("Date must be in 'YYYYMMDD' format (e.g., '20250410')")
+    def fetch_chains(self, start_date: datetime, end_date: datetime, progressbar: bool = True) -> "FUTURES":
 
-        start_dt = datetime.strptime(start_date, "%Y%m%d").replace(day=1)
-        end_dt = datetime.strptime(end_date, "%Y%m%d").replace(day=1)
+        start_dt = start_date.replace(day=1)
+        end_dt = end_date.replace(day=1)
 
         dates = (
             pl.date_range(

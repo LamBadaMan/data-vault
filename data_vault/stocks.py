@@ -5,17 +5,6 @@ from tqdm.auto import tqdm
 from typing import Optional
 
 
-def is_valid_yyyymmdd(date: str) -> bool:
-    """
-    Checks whether a date string is in the 'YYYYMMDD' format.
-    """
-    try:
-        datetime.strptime(date, "%Y%m%d")
-        return True
-    except ValueError:
-        return False
-
-
 class STOCKS:
     def __init__(self, index: str):
         self.index = index
@@ -34,7 +23,7 @@ class STOCKS:
 
     @property
     def members(self) -> pl.DataFrame:
-        return self.__get_or_raise("_chains", "fetch_members")
+        return self.__get_or_raise("_members", "fetch_members")
 
     @property
     def symbols(self) -> list[str]:
@@ -54,11 +43,9 @@ class STOCKS:
     
     @property
     def fundamentals(self) -> pl.DataFrame:
-        return self.__get_or_raise("_ohlc", "fetch_fundamentals")
+        return self.__get_or_raise("_fundamentals", "fetch_fundamentals")
 
     def __fetch_constituents(self, as_of: str) -> pl.DataFrame:
-        if not is_valid_yyyymmdd(as_of):
-            raise ValueError("Date must be in 'YYYYMMDD' format (e.g., '20250410')")
 
         payload = {
             "tickers": [self.index],
@@ -68,17 +55,18 @@ class STOCKS:
         }
 
         response = bds(payload)
-        return pl.DataFrame(response).rename({"Security Description": "symbol"}).with_columns(
-            [pl.lit(as_of).str.strptime(pl.Date, "%Y%m%d").alias("as_of")]
-        )
+        return pl.DataFrame(response).rename({"Index Member": "symbol"}).with_columns(
+            [
+                pl.lit(as_of).str.strptime(pl.Date, "%Y%m%d").alias("as_of"),
+                (pl.col("symbol") + " Equity").alias("symbol"),
+             
+            ]
+        ).drop(["Percent Weight"])
 
-    def fetch_members(self, start_date: str, end_date: str, progressbar: bool = True) -> "STOCKS":
-        for date in [start_date, end_date]:
-            if not is_valid_yyyymmdd(date):
-                raise ValueError("Date must be in 'YYYYMMDD' format (e.g., '20250410')")
+    def fetch_members(self, start_date: datetime, end_date: datetime, progressbar: bool = True) -> "STOCKS":
 
-        start_dt = datetime.strptime(start_date, "%Y%m%d").replace(day=1)
-        end_dt = datetime.strptime(end_date, "%Y%m%d").replace(day=1)
+        start_dt = start_date.replace(day=1)
+        end_dt = end_date.replace(day=1)
 
         dates = (
             pl.date_range(
@@ -105,11 +93,16 @@ class STOCKS:
 
         fields = [
             "LONG_COMP_NAME",
+            "INDUSTRY_SECTOR",
+            "INDUSTRY_GROUP",
+            "INDUSTRY_SUBGROUP",
             "GICS_SECTOR_NAME",
             "GICS_INDUSTRY_NAME",
             "GICS_INDUSTRY_GROUP_NAME",
             "GICS_SUB_INDUSTRY_NAME",
             "COUNTRY_ISO",
+            "CRNCY",
+            "DVD_CRNCY",
             "PRIMARY_EXCHANGE_NAME",
             "EXCH_CODE",
             "ID_MIC_PRIM_EXCH",
@@ -138,48 +131,68 @@ class STOCKS:
 
         df = (
             df.with_columns(
-                [pl.col(col).str.strptime(pl.Date, format="%Y-%m-%dT%H:%M:%S%.3f") for col in cols2date]
+                [pl.col(col).str.strptime(pl.Time, format="%H:%M:%S") for col in cols2date]
             )
         ).sort(["symbol"])
 
         self._meta = df
         return self
     
-    def fetch_divs(self) -> "STOCKS":
-        if self._members is None or self._symbols is None:
-            raise AttributeError("Historical index members must be fetched. Please run `fetch_members()` first.")
+    def __fetch_div(self, symbol) -> pl.DataFrame:
 
         fields = [
             "DVD_HIST_ALL",
         ]
 
         payload = {
-            "tickers": self._symbols,
+            "tickers": [symbol],
             "fields": fields,
             "options": {},
             "overrides": [],
         }
 
         response = bds(payload)
-        df = (
-            pl.DataFrame(response)
-            .rename({col: col.lower() for col in pl.DataFrame(response).columns})
-            .rename({"security": "symbol"})
-        )
+        cols2date = ["declared_date","ex_date","record_date","payable_date"]
 
-        cols2date = [
-            "dvd_hist_all",
-        ]
+        schema = {
+            "Declared Date": pl.String,
+            "Ex-Date": pl.String,
+            "Record Date": pl.String,
+            "Payable Date": pl.String,
+            "Dividend Amount": pl.Float64,
+            "Dividend Frequency": pl.String,
+            "Dividend Type": pl.String,
+        }
 
-        df = (
-            df.with_columns(
-                [pl.col(col).str.strptime(pl.Date, format="%Y-%m-%dT%H:%M:%S%.3f") for col in cols2date]
+        try:
+            df = (
+                pl.DataFrame(response, schema=schema)
+                .rename({col: col.lower().replace(" ","_").replace("-","_") for col in pl.DataFrame(response).columns})
+                .with_columns([pl.lit(symbol).alias("symbol")])
+                .with_columns(
+                                [pl.col(col).str.strptime(pl.Date, format="%Y-%m-%dT%H:%M:%S%.3f") for col in cols2date]
+                            )
             )
-        ).sort(["symbol"])
 
-        self._divs = df
+            return df
+        
+        except:
+            return None
+
+    def fetch_divs(self, progressbar: bool = True) -> "STOCKS":
+        if self._members is None or self._symbols is None:
+            raise AttributeError("Historical index members must be fetched. Please run `fetch_members()` first.")
+
+        iterator = tqdm(self._symbols, desc="Fetching historical dividend and split data") if progressbar else self._symbols
+        divs = [self.__fetch_div(symbol) for symbol in iterator]
+        divs = [x for x in divs if x is not None]
+        divs = pl.concat(divs, how="vertical", rechunk=True).sort(["symbol","declared_date"])
+
+        first_cols = ["symbol"]
+        divs = divs.select(first_cols + [col for col in divs.columns if col not in first_cols])
+
+        self._divs = divs
         return self
-
 
     def fetch_ohlc(self, progressbar: bool = True) -> "STOCKS":
         if self._symbols is None:
@@ -218,7 +231,8 @@ class STOCKS:
                     "PX_LOW",
                     "PX_LAST",
                     "PX_VOLUME",
-                    "CUR_MKT_CAP"
+                    "CUR_MKT_CAP",
+                    "DAY_TO_DAY_TOT_RETURN_GROSS_DVDS"
                 ],
                 "start_date": chunk_start.strftime("%Y%m%d"),
                 "end_date": chunk_end.strftime("%Y%m%d"),
@@ -237,6 +251,7 @@ class STOCKS:
                 "PX_LAST": pl.Float64,
                 "PX_VOLUME": pl.Float64,
                 "CUR_MKT_CAP": pl.Float64,
+                "DAY_TO_DAY_TOT_RETURN_GROSS_DVDS": pl.Float64,
             }
 
             df = pl.DataFrame(response, schema=schema)

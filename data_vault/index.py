@@ -4,18 +4,6 @@ from datetime import datetime, timedelta
 from tqdm.auto import tqdm
 from typing import Optional
 
-
-def is_valid_yyyymmdd(date: str) -> bool:
-    """
-    Checks whether a date string is in the 'YYYYMMDD' format.
-    """
-    try:
-        datetime.strptime(date, "%Y%m%d")
-        return True
-    except ValueError:
-        return False
-
-
 class INDEX:
     def __init__(self, index: str):
         self.index = index
