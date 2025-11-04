@@ -48,7 +48,7 @@ class FUTURES:
             [pl.lit(as_of).str.strptime(pl.Date, "%Y%m%d").alias("as_of")]
         )
 
-    def fetch_chains(self, start_date: datetime, end_date: datetime, progressbar: bool = True) -> "FUTURES":
+    def fetch_chains(self, start_date: datetime, end_date: datetime, progressbar: bool = False) -> "FUTURES":
 
         start_dt = start_date.replace(day=1)
         end_dt = end_date.replace(day=1)
@@ -77,6 +77,7 @@ class FUTURES:
             raise AttributeError("Historical future chains must be fetched. Please run `fetch_chains()` first.")
 
         fields = [
+            "ID_FULL_EXCHANGE_SYMBOL",
             "ID_BB_GLOBAL_ULT_PARENT_CO_NAME",
             "FUT_EXCH_NAME_LONG",
             "DERIVATIVE_DELIVERY_TYPE",
@@ -144,7 +145,7 @@ class FUTURES:
         self._meta = df
         return self
 
-    def fetch_ohlc(self, start_date: datetime, progressbar: bool = True) -> "FUTURES":
+    def fetch_ohlc(self, start_date: datetime, progressbar: bool = False) -> "FUTURES":
         if self._symbols is None:
             raise AttributeError("Historical future chains must be fetched. Please run `fetch_chains()` first.")
 
