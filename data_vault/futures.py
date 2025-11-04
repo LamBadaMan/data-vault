@@ -123,31 +123,36 @@ class FUTURES:
             df.with_columns(
                 [pl.col(col).str.strptime(pl.Date, format="%Y-%m-%dT%H:%M:%S%.3f") for col in cols2date]
             )
-            .with_columns(
-                pl.col("fut_trading_hrs").str.split("-").alias("split_range"),
-            )
-            .with_columns(
-                [
-                    pl.col("split_range").list.get(0).str.strptime(pl.Time, format="%H:%M").alias("trading_hrs_start"),
-                    pl.col("split_range").list.get(1).str.strptime(pl.Time, format="%H:%M").alias("trading_hrs_end"),
-                ]
-            )
-            .drop(["fut_trading_hrs", "split_range"])
         ).sort(["fut_first_trade_dt", "symbol"])
+
+        # df = (
+        #     df.with_columns(
+        #         [pl.col(col).str.strptime(pl.Date, format="%Y-%m-%dT%H:%M:%S%.3f") for col in cols2date]
+        #     )
+        #     .with_columns(
+        #         pl.col("fut_trading_hrs").str.split("-").alias("split_range"),
+        #     )
+        #     .with_columns(
+        #         [
+        #             pl.col("split_range").list.get(0).str.strptime(pl.Time, format="%H:%M").alias("trading_hrs_start"),
+        #             pl.col("split_range").list.get(1).str.strptime(pl.Time, format="%H:%M").alias("trading_hrs_end"),
+        #         ]
+        #     )
+        #     .drop(["fut_trading_hrs", "split_range"])
+        # ).sort(["fut_first_trade_dt", "symbol"])
 
         self._meta = df
         return self
 
-    def fetch_ohlc(self, progressbar: bool = True) -> "FUTURES":
+    def fetch_ohlc(self, start_date: datetime, progressbar: bool = True) -> "FUTURES":
         if self._symbols is None:
             raise AttributeError("Historical future chains must be fetched. Please run `fetch_chains()` first.")
 
-        start = datetime.strptime("19900101", "%Y%m%d")
         today = datetime.today()
 
         # Build 10-year chunks without overlapping
         chunks = []
-        current_start = start
+        current_start = start_date
 
         while current_start <= today:
             try:

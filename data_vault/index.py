@@ -1,6 +1,6 @@
 import polars as pl
 from fastdata_client import bdp, bdh, bds, bdip
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from tqdm.auto import tqdm
 from typing import Optional
 
@@ -24,7 +24,7 @@ class INDEX:
     def ohlc_1min(self) -> pl.DataFrame:
         return self.__get_or_raise("_ohlc_1min", "fetch_ohlc_1min")
 
-    def fetch_ohlc_daily(self, start:datetime, end:datetime) -> "INDEX":
+    def fetch_ohlc_daily(self, start:date, end:date) -> "INDEX":
 
         payload = {
             "tickers": [self.index],
@@ -33,7 +33,7 @@ class INDEX:
                 "PX_HIGH",
                 "PX_LOW",
                 "PX_LAST",
-                "PX_VOLUME",
+                "PX_VOLUME"
             ],
             "start_date": start.strftime("%Y%m%d"),
             "end_date": end.strftime("%Y%m%d"),
