@@ -2,4 +2,6 @@ polars
 pandas 
 pyarrow
 tqdm
+databento
+python-dotenv
 git+https://github.com/LamBadaMan/fastdata-client.git
